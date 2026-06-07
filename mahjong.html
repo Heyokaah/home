@@ -428,7 +428,7 @@
       7: {
         discard: { total: 192 },
         selfDraw: { base: 96, total: 288 },
-        text_discard: "出沖者包全自付 192 (其餘 0)",
+        text_discard: "出沖者包全自付 192 (80%) (其餘 0)", // customized
         text_self: "96 + 96 + 96"
       },
       8: {
@@ -832,6 +832,7 @@
       showToast("本局過數成功！出沖者已承擔全付點數", "success");
     }
 
+    // Resetting only temporary selections
     function resetInputs() {
       selectedWinnerId = null;
       selectedWinMethod = null;
@@ -961,5 +962,3 @@
   </script>
 </body>
 </html>
-```
-eof
