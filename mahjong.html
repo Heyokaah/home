@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>屋企打牌計分器 - 智能廣東牌結算系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons for Mahjong vibes -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <!-- Google Fonts: Inter & Noto Sans TC for maximum legibility -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #05160e; /* Dark mahjong table-felt color */
+    }
+    .mahjong-tile {
+      background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
+      box-shadow: 0 4px 0 #d1d5db, 0 6px 10px rgba(0,0,0,0.5), inset 0 -3px 0 #e5e7eb;
+      text-shadow: 1px 1px 0px rgba(255,255,255,0.8);
+    }
+    .mahjong-tile-active {
+      background: linear-gradient(135deg, #fef3c7 0%, #fcd34d 100%);
+      box-shadow: 0 4px 0 #d97706, 0 6px 10px rgba(217,119,6,0.3), inset 0 -3px 0 #f59e0b;
+    }
+    /* Custom scrollbar for game log */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.2);
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background-color: #047857;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="text-gray-100 min-h-screen pb-12">
+
+  <!-- Top Navigation/Header -->
+  <header class="bg-gradient-to-b from-[#062c19] to-[#041d10] border-b-4 border-amber-500 py-4 px-4 shadow-xl sticky top-0 z-40">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <!-- Mahjong Tiles decoration -->
+        <div class="flex gap-1.5">
+          <div class="mahjong-tile w-8 h-11 rounded flex items-center justify-center font-black text-emerald-800 text-lg border border-gray-300">東</div>
+          <div class="mahjong-tile w-8 h-11 rounded flex items-center justify-center font-black text-red-600 text-lg border border-gray-300">南</div>
+          <div class="mahjong-tile w-8 h-11 rounded flex items-center justify-center font-black text-emerald-800 text-lg border border-gray-300">西</div>
+          <div class="mahjong-tile w-8 h-11 rounded flex items-center justify-center font-black text-gray-800 text-lg border border-gray-300">北</div>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-black text-amber-400 tracking-wider flex items-center gap-2">
+            <span>雀神計分器</span>
+            <span class="text-xs bg-red-600 text-white font-bold px-2 py-0.5 rounded-full animate-pulse">出冲全付版</span>
+          </h1>
+          <p class="text-xs text-emerald-300">廣東牌 / 香港麻將 智能結算系統 (參考 Mahjong calculation.jpg)</p>
+        </div>
+      </div>
+      <!-- Global Controls -->
+      <div class="flex gap-2 w-full sm:w-auto">
+        <button onclick="confirmReset()" class="flex-1 sm:flex-none px-3 py-1.5 bg-red-700/80 hover:bg-red-600 transition-colors rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 border border-red-500">
+          <i class="fa-solid fa-rotate-right"></i> 新一盤 (重設)
+        </button>
+        <button onclick="toggleFanTableModal()" class="flex-1 sm:flex-none px-3 py-1.5 bg-emerald-700/80 hover:bg-emerald-600 transition-colors rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 border border-emerald-500">
+          <i class="fa-solid fa-table"></i> 番數表
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Custom Alert System Container (No default alert() used) -->
+  <div id="toast-container" class="fixed top-20 right-4 left-4 sm:left-auto sm:w-96 z-50 pointer-events-none flex flex-col gap-2"></div>
+
+  <!-- Main Grid Layout -->
+  <main class="max-w-5xl mx-auto px-4 mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT SIDE: 4 Players Overview Cards (4 Columns / Rows) -->
+    <section class="lg:col-span-7 space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+          <i class="fa-solid fa-users"></i> 玩家狀態與計分板
+        </h2>
+        <div class="text-xs text-gray-400 bg-[#082215] px-2 py-1 rounded border border-emerald-800/50">
+          雙擊或點擊名字可修改
+        </div>
+      </div>
+
+      <!-- Players Container Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Player 1 -->
+        <div id="player-card-0" class="bg-[#0b2a1a] border-2 border-emerald-800 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-lg">
+          <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-600/10 rounded-bl-full pointer-events-none"></div>
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-center gap-2">
+              <span id="player-wind-badge-0" class="mahjong-tile-active w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow">東</span>
+              <div class="group relative">
+                <input type="text" id="player-name-0" value="玩家一" onchange="updatePlayerName(0, this.value)" class="bg-transparent font-bold text-base text-white border-b border-transparent hover:border-emerald-600 focus:border-amber-400 focus:outline-none transition-all w-24">
+                <i class="fa-solid fa-pen text-xs text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity ml-1"></i>
+              </div>
+            </div>
+            <!-- Dealer badge toggle -->
+            <button onclick="setDealer(0)" id="dealer-btn-0" class="text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-[#05160e] text-gray-400 border-gray-700 hover:border-amber-500 hover:text-amber-400">
+              <i class="fa-solid fa-crown text-amber-500"></i> 做莊
+            </button>
+          </div>
+          <!-- Score Display -->
+          <div class="flex justify-between items-end mt-4">
+            <span class="text-xs text-emerald-400 uppercase tracking-widest font-semibold">Total Score</span>
+            <span id="player-total-0" class="text-3xl font-black text-amber-400 font-mono">0</span>
+          </div>
+          <!-- Fine Adjustment buttons -->
+          <div class="mt-3 pt-3 border-t border-emerald-900/50 flex gap-2 justify-between items-center">
+            <span class="text-[10px] text-emerald-500">微調分數:</span>
+            <div class="flex gap-1">
+              <button onclick="adjustScore(0, -10)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-10</button>
+              <button onclick="adjustScore(0, -1)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-1</button>
+              <button onclick="adjustScore(0, 1)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+1</button>
+              <button onclick="adjustScore(0, 10)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+10</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player 2 -->
+        <div id="player-card-1" class="bg-[#0b2a1a] border-2 border-emerald-800 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-lg">
+          <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-600/10 rounded-bl-full pointer-events-none"></div>
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-center gap-2">
+              <span id="player-wind-badge-1" class="mahjong-tile w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow">南</span>
+              <div class="group relative">
+                <input type="text" id="player-name-1" value="玩家二" onchange="updatePlayerName(1, this.value)" class="bg-transparent font-bold text-base text-white border-b border-transparent hover:border-emerald-600 focus:border-amber-400 focus:outline-none transition-all w-24">
+                <i class="fa-solid fa-pen text-xs text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity ml-1"></i>
+              </div>
+            </div>
+            <button onclick="setDealer(1)" id="dealer-btn-1" class="text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-[#05160e] text-gray-400 border-gray-700 hover:border-amber-500 hover:text-amber-400">
+              <i class="fa-solid fa-crown text-amber-500"></i> 做莊
+            </button>
+          </div>
+          <div class="flex justify-between items-end mt-4">
+            <span class="text-xs text-emerald-400 uppercase tracking-widest font-semibold">Total Score</span>
+            <span id="player-total-1" class="text-3xl font-black text-amber-400 font-mono">0</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-emerald-900/50 flex gap-2 justify-between items-center">
+            <span class="text-[10px] text-emerald-500">微調分數:</span>
+            <div class="flex gap-1">
+              <button onclick="adjustScore(1, -10)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-10</button>
+              <button onclick="adjustScore(1, -1)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-1</button>
+              <button onclick="adjustScore(1, 1)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+1</button>
+              <button onclick="adjustScore(1, 10)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+10</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player 3 -->
+        <div id="player-card-2" class="bg-[#0b2a1a] border-2 border-emerald-800 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-lg">
+          <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-600/10 rounded-bl-full pointer-events-none"></div>
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-center gap-2">
+              <span id="player-wind-badge-2" class="mahjong-tile w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow">西</span>
+              <div class="group relative">
+                <input type="text" id="player-name-2" value="玩家三" onchange="updatePlayerName(2, this.value)" class="bg-transparent font-bold text-base text-white border-b border-transparent hover:border-emerald-600 focus:border-amber-400 focus:outline-none transition-all w-24">
+                <i class="fa-solid fa-pen text-xs text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity ml-1"></i>
+              </div>
+            </div>
+            <button onclick="setDealer(2)" id="dealer-btn-2" class="text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-[#05160e] text-gray-400 border-gray-700 hover:border-amber-500 hover:text-amber-400">
+              <i class="fa-solid fa-crown text-amber-500"></i> 做莊
+            </button>
+          </div>
+          <div class="flex justify-between items-end mt-4">
+            <span class="text-xs text-emerald-400 uppercase tracking-widest font-semibold">Total Score</span>
+            <span id="player-total-2" class="text-3xl font-black text-amber-400 font-mono">0</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-emerald-900/50 flex gap-2 justify-between items-center">
+            <span class="text-[10px] text-emerald-500">微調分數:</span>
+            <div class="flex gap-1">
+              <button onclick="adjustScore(2, -10)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-10</button>
+              <button onclick="adjustScore(2, -1)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-1</button>
+              <button onclick="adjustScore(2, 1)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+1</button>
+              <button onclick="adjustScore(2, 10)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+10</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player 4 -->
+        <div id="player-card-3" class="bg-[#0b2a1a] border-2 border-emerald-800 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-lg">
+          <div class="absolute top-0 right-0 w-16 h-16 bg-emerald-600/10 rounded-bl-full pointer-events-none"></div>
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex items-center gap-2">
+              <span id="player-wind-badge-3" class="mahjong-tile w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow">北</span>
+              <div class="group relative">
+                <input type="text" id="player-name-3" value="玩家四" onchange="updatePlayerName(3, this.value)" class="bg-transparent font-bold text-base text-white border-b border-transparent hover:border-emerald-600 focus:border-amber-400 focus:outline-none transition-all w-24">
+                <i class="fa-solid fa-pen text-xs text-emerald-500 opacity-50 group-hover:opacity-100 transition-opacity ml-1"></i>
+              </div>
+            </div>
+            <button onclick="setDealer(3)" id="dealer-btn-3" class="text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-[#05160e] text-gray-400 border-gray-700 hover:border-amber-500 hover:text-amber-400">
+              <i class="fa-solid fa-crown text-amber-500"></i> 做莊
+            </button>
+          </div>
+          <div class="flex justify-between items-end mt-4">
+            <span class="text-xs text-emerald-400 uppercase tracking-widest font-semibold">Total Score</span>
+            <span id="player-total-3" class="text-3xl font-black text-amber-400 font-mono">0</span>
+          </div>
+          <div class="mt-3 pt-3 border-t border-emerald-900/50 flex gap-2 justify-between items-center">
+            <span class="text-[10px] text-emerald-500">微調分數:</span>
+            <div class="flex gap-1">
+              <button onclick="adjustScore(3, -10)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-10</button>
+              <button onclick="adjustScore(3, -1)" class="px-2 py-0.5 bg-black/40 hover:bg-red-950/80 border border-red-900/30 rounded text-xs text-red-400 transition-colors">-1</button>
+              <button onclick="adjustScore(3, 1)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+1</button>
+              <button onclick="adjustScore(3, 10)" class="px-2 py-0.5 bg-black/40 hover:bg-emerald-900/80 border border-emerald-900/30 rounded text-xs text-emerald-400 transition-colors">+10</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Historical Ledger Logs -->
+      <div class="bg-[#0b2216] border border-emerald-800/80 rounded-xl p-4 shadow-lg">
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
+            <i class="fa-solid fa-receipt"></i> 歷史對局帳單
+          </h3>
+          <button onclick="undoLastRound()" id="undo-btn" class="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 disabled:pointer-events-none transition-all rounded text-xs text-gray-300 flex items-center gap-1" disabled>
+            <i class="fa-solid fa-arrow-rotate-left"></i> 復原上局 (Undo)
+          </button>
+        </div>
+        <div id="history-list" class="max-h-48 overflow-y-auto custom-scroll space-y-2 text-xs text-gray-300 pr-1">
+          <p class="text-center text-gray-500 py-6">暫無對局記錄，趕快開始第一局吧！</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT SIDE: Game Settlement Panel (Winner / Loser / Fan Choice) -->
+    <section class="lg:col-span-5 space-y-4">
+      <div class="bg-[#0f3a24] border-2 border-emerald-600 rounded-2xl p-5 shadow-2xl relative">
+        <div class="absolute -top-3 -right-3 bg-amber-500 text-slate-950 font-black text-xs px-3 py-1 rounded-lg transform rotate-6 shadow-md">
+          智能計算盤
+        </div>
+
+        <h2 class="text-xl font-extrabold text-amber-400 mb-4 flex items-center gap-2 border-b border-emerald-800 pb-3">
+          <i class="fa-solid fa-calculator"></i> 本局結算登記
+        </h2>
+
+        <!-- STEP 1: Select Winner -->
+        <div class="mb-4">
+          <label class="block text-xs font-bold text-emerald-300 mb-2 uppercase tracking-wide">1. 選擇贏家 (食糊者)</label>
+          <div class="grid grid-cols-2 gap-2" id="winner-selector-group">
+            <!-- Dynamically Rendered Button Group -->
+            <button onclick="selectWinner(0)" id="winner-btn-0" class="winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span class="truncate" id="winner-name-text-0">玩家一</span>
+            </button>
+            <button onclick="selectWinner(1)" id="winner-btn-1" class="winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span class="truncate" id="winner-name-text-1">玩家二</span>
+            </button>
+            <button onclick="selectWinner(2)" id="winner-btn-2" class="winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span class="truncate" id="winner-name-text-2">玩家三</span>
+            </button>
+            <button onclick="selectWinner(3)" id="winner-btn-3" class="winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span class="truncate" id="winner-name-text-3">玩家四</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 2: Win Method -->
+        <div class="mb-4">
+          <label class="block text-xs font-bold text-emerald-300 mb-2 uppercase tracking-wide">2. 食糊方式</label>
+          <div class="grid grid-cols-2 gap-3">
+            <button onclick="selectWinMethod('selfDraw')" id="method-btn-selfDraw" class="method-btn py-3 bg-[#081f14] border border-emerald-800 rounded-xl font-bold text-sm text-center transition-all flex flex-col items-center justify-center gap-1">
+              <span class="text-xl">🀄</span>
+              <span>自摸 (三家付)</span>
+            </button>
+            <button onclick="selectWinMethod('discard')" id="method-btn-discard" class="method-btn py-3 bg-[#081f14] border border-emerald-800 rounded-xl font-bold text-sm text-center transition-all flex flex-col items-center justify-center gap-1">
+              <span class="text-xl">🎴</span>
+              <span>食糊 (一家出沖全包)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- STEP 3: Select Discarder (If Discard is selected) -->
+        <div id="discarder-step-container" class="mb-4 hidden transition-all duration-300">
+          <label class="block text-xs font-bold text-rose-300 mb-2 uppercase tracking-wide">3. 選擇出沖者 (全包條數)</label>
+          <div class="grid grid-cols-3 gap-2" id="discarder-selector-group">
+            <!-- Rendered via JS to prevent selecting the winner as discarder -->
+          </div>
+        </div>
+
+        <!-- STEP 4: Choose Fan -->
+        <div class="mb-5">
+          <label class="block text-xs font-bold text-emerald-300 mb-2 uppercase tracking-wide">4. 選擇番數</label>
+          <div class="grid grid-cols-4 gap-2">
+            <button onclick="selectFan(3)" id="fan-btn-3" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">3 番</button>
+            <button onclick="selectFan(4)" id="fan-btn-4" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">4 番</button>
+            <button onclick="selectFan(5)" id="fan-btn-5" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">5 番</button>
+            <button onclick="selectFan(6)" id="fan-btn-6" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">6 番</button>
+            <button onclick="selectFan(7)" id="fan-btn-7" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">7 番</button>
+            <button onclick="selectFan(8)" id="fan-btn-8" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">8 番</button>
+            <button onclick="selectFan(9)" id="fan-btn-9" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">9 番</button>
+            <button onclick="selectFan(10)" id="fan-btn-10" class="fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all">10 番</button>
+          </div>
+        </div>
+
+        <!-- Score Preview Box -->
+        <div id="preview-box" class="bg-black/40 border border-emerald-700/60 rounded-xl p-3 mb-5 hidden">
+          <h4 class="text-xs font-bold text-amber-500 mb-2"><i class="fa-solid fa-eye"></i> 分數結算預覽</h4>
+          <div class="space-y-1" id="preview-list">
+            <!-- Dynamic Preview List -->
+          </div>
+        </div>
+
+        <!-- Extra Settings -->
+        <div class="flex items-center justify-between mb-5 bg-[#082215]/60 px-3 py-2.5 rounded-lg border border-emerald-900/50">
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="auto-rotate-checkbox" checked class="w-4 h-4 text-emerald-600 bg-gray-900 border-gray-700 rounded focus:ring-emerald-500 focus:ring-offset-gray-900 focus:ring-2">
+            <label for="auto-rotate-checkbox" class="text-xs font-semibold text-gray-300 cursor-pointer">非莊家食糊時自動轉莊</label>
+          </div>
+        </div>
+
+        <!-- Submit Score -->
+        <button onclick="submitScore()" class="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-lg rounded-xl shadow-lg hover:shadow-amber-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+          <i class="fa-solid fa-circle-check text-xl"></i> 確認過數 (計分!)
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODAL / BOTTOM COMPONENT: Beautiful Fan Score Reference Table -->
+  <div id="fan-table-modal" class="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#0b2216] border-2 border-emerald-500 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl transform scale-95 transition-all">
+      <div class="bg-gradient-to-r from-emerald-900 to-emerald-950 px-6 py-4 border-b border-emerald-800 flex justify-between items-center">
+        <h3 class="text-lg font-black text-amber-400 flex items-center gap-2">
+          <i class="fa-solid fa-table"></i> 番數對照表 (一家出沖全付規則)
+        </h3>
+        <button onclick="toggleFanTableModal()" class="text-gray-400 hover:text-white transition-colors">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      <div class="p-6 overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-200">
+          <thead class="text-xs uppercase bg-emerald-950 text-emerald-400 border-b border-emerald-800">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-center rounded-tl-lg">番數</th>
+              <th scope="col" class="px-6 py-3">食糊 (出沖) 全付細節</th>
+              <th scope="col" class="px-4 py-3 text-center font-bold text-amber-300 bg-emerald-900/40">出沖 Total</th>
+              <th scope="col" class="px-6 py-3">自摸 (三家分) 點數細節</th>
+              <th scope="col" class="px-4 py-3 text-center font-bold text-amber-300 bg-emerald-900/40 rounded-tr-lg">自摸 Total</th>
+            </tr>
+          </thead>
+          <tbody id="fan-tbody-rows">
+            <!-- Row items mapped dynamically to allow highlighting -->
+          </tbody>
+        </table>
+        <div class="mt-4 p-3 bg-emerald-950/40 border border-emerald-800/40 rounded-lg text-xs text-emerald-300 space-y-1">
+          <p class="text-amber-400 font-bold"><i class="fa-solid fa-circle-exclamation"></i> 家中打牌特別規則：</p>
+          <p>1. <strong>食糊（放銃）</strong>：實行「一家出沖全付」制。出沖者全包所有點數，另外兩家不用付分。例如 3番 食糊總分 32 點，出沖者一人全付 32 點，其餘兩家付 0。</p>
+          <p>2. <strong>自摸</strong>：三家皆支付相同底分。例如 3番自摸「16 + 16 + 16 = 48」，其餘三家各付 16 點。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Modal -->
+  <div id="reset-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-[#1c0f0f] border-2 border-red-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+      <div class="text-center">
+        <div class="w-16 h-16 bg-red-950/50 border-2 border-red-500 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <h3 class="text-lg font-black text-white mb-2">確定重設所有分數嗎？</h3>
+        <p class="text-xs text-gray-400 mb-6">這將會清除當前所有玩家的分數以及局數歷史紀錄，此動作無法復原。</p>
+        <div class="flex gap-3">
+          <button onclick="toggleResetModal(false)" class="flex-1 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-bold transition-all text-gray-300">
+            取消
+          </button>
+          <button onclick="resetApp()" class="flex-1 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-xs font-bold transition-all text-white">
+            確認重置
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State definitions
+    let players = [
+      { id: 0, name: "玩家一", total: 0, position: "東", isDealer: true },
+      { id: 1, name: "玩家二", total: 0, position: "南", isDealer: false },
+      { id: 2, name: "玩家三", total: 0, position: "西", isDealer: false },
+      { id: 3, name: "玩家四", total: 0, position: "北", isDealer: false },
+    ];
+
+    let history = [];
+
+    // Selected state for the settlement tool
+    let selectedWinnerId = null;
+    let selectedWinMethod = null; // 'selfDraw' or 'discard'
+    let selectedDiscarderId = null;
+    let selectedFan = null;
+
+    // Fan calculations matching "Mahjong calculation.jpg" but adjusted so discard is 100% paid by the discarder
+    const fanScoreTable = {
+      3: {
+        discard: { total: 32 },
+        selfDraw: { base: 16, total: 48 },
+        text_discard: "出沖者包全自付 32 (其餘 0)",
+        text_self: "16 + 16 + 16"
+      },
+      4: {
+        discard: { total: 64 },
+        selfDraw: { base: 32, total: 96 },
+        text_discard: "出沖者包全自付 64 (其餘 0)",
+        text_self: "32 + 32 + 32"
+      },
+      5: {
+        discard: { total: 96 },
+        selfDraw: { base: 48, total: 144 },
+        text_discard: "出沖者包全自付 96 (其餘 0)",
+        text_self: "48 + 48 + 48"
+      },
+      6: {
+        discard: { total: 128 },
+        selfDraw: { base: 64, total: 192 },
+        text_discard: "出沖者包全自付 128 (其餘 0)",
+        text_self: "64 + 64 + 64"
+      },
+      7: {
+        discard: { total: 192 },
+        selfDraw: { base: 96, total: 288 },
+        text_discard: "出沖者包全自付 192 (其餘 0)",
+        text_self: "96 + 96 + 96"
+      },
+      8: {
+        discard: { total: 256 },
+        selfDraw: { base: 128, total: 384 },
+        text_discard: "出沖者包全自付 256 (其餘 0)",
+        text_self: "128 + 128 + 128"
+      },
+      9: {
+        discard: { total: 384 },
+        selfDraw: { base: 192, total: 576 },
+        text_discard: "出沖者包全自付 384 (其餘 0)",
+        text_self: "192 + 192 + 192"
+      },
+      10: {
+        discard: { total: 512 },
+        selfDraw: { base: 256, total: 768 },
+        text_discard: "出沖者包全自付 512 (其餘 0)",
+        text_self: "256 + 256 + 256"
+      }
+    };
+
+    window.onload = function() {
+      loadState();
+      renderPlayers();
+      renderFanTable();
+      renderHistory();
+      updateWinInterface();
+    };
+
+    function saveState() {
+      localStorage.setItem("mj_score_players_v2", JSON.stringify(players));
+      localStorage.setItem("mj_score_history_v2", JSON.stringify(history));
+    }
+
+    function loadState() {
+      const savedPlayers = localStorage.getItem("mj_score_players_v2");
+      const savedHistory = localStorage.getItem("mj_score_history_v2");
+      if (savedPlayers) {
+        players = JSON.parse(savedPlayers);
+      }
+      if (savedHistory) {
+        history = JSON.parse(savedHistory);
+      }
+    }
+
+    function showToast(message, type = "success") {
+      const container = document.getElementById("toast-container");
+      const toast = document.createElement("div");
+      toast.className = `p-4 rounded-xl shadow-2xl border flex items-center gap-3 transition-all duration-300 translate-y-2 opacity-0 pointer-events-auto`;
+      
+      if (type === "success") {
+        toast.className += " bg-emerald-950 border-emerald-500 text-emerald-200";
+        toast.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 text-lg"></i> <div>${message}</div>`;
+      } else if (type === "warning") {
+        toast.className += " bg-amber-950 border-amber-500 text-amber-200";
+        toast.innerHTML = `<i class="fa-solid fa-circle-exclamation text-amber-400 text-lg"></i> <div>${message}</div>`;
+      } else {
+        toast.className += " bg-red-950 border-red-500 text-red-200";
+        toast.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400 text-lg"></i> <div>${message}</div>`;
+      }
+
+      container.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.classList.remove("translate-y-2", "opacity-0");
+      }, 50);
+
+      setTimeout(() => {
+        toast.classList.add("translate-y-2", "opacity-0");
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    function renderPlayers() {
+      players.forEach((p, idx) => {
+        const nameInput = document.getElementById(`player-name-${idx}`);
+        if (nameInput && nameInput.value !== p.name) {
+          nameInput.value = p.name;
+        }
+        
+        const selectText = document.getElementById(`winner-name-text-${idx}`);
+        if (selectText) selectText.innerText = p.name;
+
+        const totalEl = document.getElementById(`player-total-${idx}`);
+        if (totalEl) {
+          totalEl.innerText = p.total > 0 ? `+${p.total}` : p.total;
+          if (p.total > 0) {
+            totalEl.className = "text-3xl font-black text-emerald-400 font-mono";
+          } else if (p.total < 0) {
+            totalEl.className = "text-3xl font-black text-rose-500 font-mono";
+          } else {
+            totalEl.className = "text-3xl font-black text-gray-400 font-mono";
+          }
+        }
+
+        const cardEl = document.getElementById(`player-card-${idx}`);
+        const dealerBtn = document.getElementById(`dealer-btn-${idx}`);
+        const windBadge = document.getElementById(`player-wind-badge-${idx}`);
+        
+        if (p.isDealer) {
+          cardEl.className = "bg-[#183626] border-2 border-amber-500 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-2xl scale-[1.01]";
+          dealerBtn.className = "text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-amber-500 text-slate-950 border-amber-400";
+          windBadge.className = "mahjong-tile-active w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow-md";
+        } else {
+          cardEl.className = "bg-[#0b2a1a] border-2 border-emerald-800 rounded-xl p-4 transition-all duration-300 relative overflow-hidden shadow-lg";
+          dealerBtn.className = "text-xs font-bold px-2.5 py-1 rounded-full border transition-all flex items-center gap-1 bg-[#05160e] text-gray-400 border-gray-700 hover:border-amber-500 hover:text-amber-400";
+          windBadge.className = "mahjong-tile w-8 h-8 rounded-lg flex items-center justify-center font-bold text-lg text-emerald-950 shadow";
+        }
+      });
+    }
+
+    function renderFanTable() {
+      const tbody = document.getElementById("fan-tbody-rows");
+      tbody.innerHTML = "";
+
+      Object.keys(fanScoreTable).forEach(fanNum => {
+        const item = fanScoreTable[fanNum];
+        const isCurrentSelected = (selectedFan === parseInt(fanNum));
+        
+        const tr = document.createElement("tr");
+        tr.className = `border-b border-emerald-900/40 hover:bg-emerald-900/10 transition-colors ${isCurrentSelected ? 'bg-amber-500/20 text-white font-bold' : ''}`;
+        
+        tr.innerHTML = `
+          <td class="px-4 py-3 text-center font-black ${isCurrentSelected ? 'text-amber-400' : 'text-emerald-300'}">${fanNum}</td>
+          <td class="px-6 py-3 font-mono text-xs text-rose-300">${item.text_discard}</td>
+          <td class="px-4 py-3 text-center font-black bg-emerald-950/30 ${isCurrentSelected ? 'text-amber-400' : 'text-amber-300'}">${item.discard.total}</td>
+          <td class="px-6 py-3 font-mono text-xs">${item.text_self}</td>
+          <td class="px-4 py-3 text-center font-black bg-emerald-950/30 ${isCurrentSelected ? 'text-amber-400' : 'text-amber-300'}">${item.selfDraw.total}</td>
+        `;
+        
+        tr.onclick = () => {
+          selectFan(parseInt(fanNum));
+          showToast(`已選擇對照表中的 ${fanNum} 番`, "success");
+        };
+        tr.style.cursor = "pointer";
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function selectWinner(idx) {
+      selectedWinnerId = idx;
+      
+      document.querySelectorAll(".winner-btn").forEach((btn, i) => {
+        if (i === idx) {
+          btn.className = "winner-btn py-2.5 px-3 bg-amber-500 hover:bg-amber-400 border-2 border-amber-300 text-slate-950 font-bold text-sm rounded-lg transition-all text-left flex items-center gap-2";
+        } else {
+          btn.className = "winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2";
+        }
+      });
+
+      renderDiscarderOptions();
+      updateWinInterface();
+    }
+
+    function selectWinMethod(method) {
+      selectedWinMethod = method;
+      
+      const selfBtn = document.getElementById("method-btn-selfDraw");
+      const discardBtn = document.getElementById("method-btn-discard");
+
+      if (method === 'selfDraw') {
+        selfBtn.className = "method-btn py-3 bg-amber-500 text-slate-950 border-2 border-amber-300 rounded-xl font-black text-sm text-center transition-all flex flex-col items-center justify-center gap-1 shadow-lg";
+        discardBtn.className = "method-btn py-3 bg-[#081f14] border border-emerald-800 hover:border-emerald-600 rounded-xl font-bold text-sm text-center transition-all flex flex-col items-center justify-center gap-1 opacity-60";
+        document.getElementById("discarder-step-container").classList.add("hidden");
+        selectedDiscarderId = null;
+      } else {
+        discardBtn.className = "method-btn py-3 bg-amber-500 text-slate-950 border-2 border-amber-300 rounded-xl font-black text-sm text-center transition-all flex flex-col items-center justify-center gap-1 shadow-lg";
+        selfBtn.className = "method-btn py-3 bg-[#081f14] border border-emerald-800 hover:border-emerald-600 rounded-xl font-bold text-sm text-center transition-all flex flex-col items-center justify-center gap-1 opacity-60";
+        document.getElementById("discarder-step-container").classList.remove("hidden");
+        renderDiscarderOptions();
+      }
+
+      updateWinInterface();
+    }
+
+    function renderDiscarderOptions() {
+      const group = document.getElementById("discarder-selector-group");
+      group.innerHTML = "";
+
+      players.forEach((p) => {
+        if (p.id === selectedWinnerId) return;
+
+        const btn = document.createElement("button");
+        btn.onclick = () => selectDiscarder(p.id);
+        btn.id = `discarder-btn-${p.id}`;
+        
+        if (selectedDiscarderId === p.id) {
+          btn.className = "py-2.5 px-3 bg-rose-600 hover:bg-rose-500 border-2 border-rose-400 text-white font-bold text-sm rounded-lg transition-all text-center truncate shadow-lg";
+        } else {
+          btn.className = "py-2.5 px-3 bg-[#081f14] hover:bg-red-950 border border-emerald-800 hover:border-rose-900 text-sm font-medium rounded-lg transition-all text-center truncate";
+        }
+        btn.innerText = p.name;
+        group.appendChild(btn);
+      });
+    }
+
+    function selectDiscarder(idx) {
+      selectedDiscarderId = idx;
+      renderDiscarderOptions();
+      updateWinInterface();
+    }
+
+    function selectFan(fan) {
+      selectedFan = fan;
+      
+      document.querySelectorAll(".fan-btn").forEach(btn => {
+        const btnFan = parseInt(btn.id.replace("fan-btn-", ""));
+        if (btnFan === fan) {
+          btn.className = "fan-btn py-2 bg-amber-500 text-slate-950 border-2 border-amber-300 rounded-lg text-sm font-black transition-all shadow-lg";
+        } else {
+          btn.className = "fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all text-gray-200";
+        }
+      });
+
+      renderFanTable();
+      updateWinInterface();
+    }
+
+    function setDealer(idx) {
+      players.forEach((p, i) => {
+        p.isDealer = (i === idx);
+      });
+      saveState();
+      renderPlayers();
+      updateWinInterface();
+      showToast(`莊家已設定為: ${players[idx].name}`, "success");
+    }
+
+    function adjustScore(idx, value) {
+      players[idx].total += value;
+      saveState();
+      renderPlayers();
+      updateWinInterface();
+    }
+
+    function updatePlayerName(idx, value) {
+      const cleanVal = value.trim() || `玩家${idx+1}`;
+      players[idx].name = cleanVal;
+      saveState();
+      renderPlayers();
+      renderDiscarderOptions();
+      showToast(`玩家${idx+1} 已改名為: ${cleanVal}`, "success");
+    }
+
+    // Compute current round settlement based on "一家出沖，條數由出沖者全付" rule
+    function calculateRoundPoints() {
+      if (selectedWinnerId === null || !selectedWinMethod || !selectedFan) {
+        return null;
+      }
+
+      if (selectedWinMethod === "discard" && selectedDiscarderId === null) {
+        return null;
+      }
+
+      const pointMap = fanScoreTable[selectedFan];
+      let playerDeltas = [0, 0, 0, 0];
+
+      if (selectedWinMethod === "selfDraw") {
+        // Self Draw payment: every non-winner pays the base price
+        const winValue = pointMap.selfDraw.total;
+        const eachPays = pointMap.selfDraw.base;
+
+        players.forEach((p) => {
+          if (p.id === selectedWinnerId) {
+            playerDeltas[p.id] = winValue;
+          } else {
+            playerDeltas[p.id] = -eachPays;
+          }
+        });
+      } else {
+        // "一家出沖，條數由出沖者全付" rule:
+        // Winner gets the total amount of points, Discarder pays the FULL total amount of points.
+        // Other 2 players pay 0 points.
+        const winValue = pointMap.discard.total;
+
+        players.forEach((p) => {
+          if (p.id === selectedWinnerId) {
+            playerDeltas[p.id] = winValue;
+          } else if (p.id === selectedDiscarderId) {
+            playerDeltas[p.id] = -winValue; // Discarder pays ALL
+          } else {
+            playerDeltas[p.id] = 0; // Others pay NOTHING
+          }
+        });
+      }
+
+      return playerDeltas;
+    }
+
+    function updateWinInterface() {
+      const previewBox = document.getElementById("preview-box");
+      const previewList = document.getElementById("preview-list");
+      
+      const deltas = calculateRoundPoints();
+      
+      if (!deltas) {
+        previewBox.classList.add("hidden");
+        return;
+      }
+
+      previewBox.classList.remove("hidden");
+      previewList.innerHTML = "";
+
+      deltas.forEach((val, idx) => {
+        const item = document.createElement("div");
+        item.className = "flex justify-between items-center text-xs border-b border-emerald-900/30 py-1";
+        
+        let labelText = players[idx].name;
+        if (players[idx].isDealer) {
+          labelText += " (莊 👑)";
+        }
+        
+        let scoreClass = "font-bold font-mono";
+        let scoreStr = val.toString();
+        
+        if (val > 0) {
+          scoreStr = `+${val}`;
+          scoreClass += " text-emerald-400";
+        } else if (val < 0) {
+          scoreClass += " text-rose-500 font-extrabold";
+        } else {
+          scoreClass += " text-gray-500";
+        }
+
+        item.innerHTML = `
+          <span class="text-gray-300 font-semibold">${labelText}</span>
+          <span class="${scoreClass}">${scoreStr}</span>
+        `;
+        previewList.appendChild(item);
+      });
+    }
+
+    function submitScore() {
+      const deltas = calculateRoundPoints();
+      
+      if (selectedWinnerId === null) {
+        showToast("請選擇本局贏家！", "error");
+        return;
+      }
+      if (!selectedWinMethod) {
+        showToast("請選擇食糊方式（自摸或出沖）！", "error");
+        return;
+      }
+      if (selectedWinMethod === "discard" && selectedDiscarderId === null) {
+        showToast("出沖食糊請選擇誰放銃出沖！", "error");
+        return;
+      }
+      if (!selectedFan) {
+        showToast("請選擇此局番數！", "error");
+        return;
+      }
+
+      const curDealer = players.find(p => p.isDealer);
+      const isDealerWinner = players[selectedWinnerId].isDealer;
+
+      players.forEach((p, i) => {
+        p.total += deltas[i];
+      });
+
+      const date = new Date();
+      const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+      const logDetails = {
+        timestamp: timeStr,
+        winner: players[selectedWinnerId].name,
+        winnerId: selectedWinnerId,
+        method: selectedWinMethod === "selfDraw" ? "自摸" : "出沖全包",
+        discarder: selectedWinMethod === "discard" ? players[selectedDiscarderId].name : null,
+        discarderId: selectedDiscarderId,
+        fan: selectedFan,
+        deltas: [...deltas],
+        prevDealerId: curDealer ? curDealer.id : 0,
+        rotatedDealer: false
+      };
+
+      const autoRotate = document.getElementById("auto-rotate-checkbox").checked;
+      
+      if (autoRotate && !isDealerWinner) {
+        const curDealerIdx = players.findIndex(p => p.isDealer);
+        const nextDealerIdx = (curDealerIdx + 1) % 4;
+        
+        players.forEach((p, i) => {
+          p.isDealer = (i === nextDealerIdx);
+        });
+        
+        logDetails.rotatedDealer = true;
+        logDetails.newDealerId = nextDealerIdx;
+        showToast(`牌局結束！莊家轉由 ${players[nextDealerIdx].name} 擔任`, "warning");
+      } else {
+        showToast(`${players[selectedWinnerId].name} 莊家連莊！`, "success");
+      }
+
+      history.unshift(logDetails);
+      saveState();
+
+      resetInputs();
+      renderPlayers();
+      renderHistory();
+      
+      showToast("本局過數成功！出沖者已承擔全付點數", "success");
+    }
+
+    function resetInputs() {
+      selectedWinnerId = null;
+      selectedWinMethod = null;
+      selectedDiscarderId = null;
+      selectedFan = null;
+
+      document.querySelectorAll(".winner-btn").forEach(btn => {
+        btn.className = "winner-btn py-2.5 px-3 bg-[#081f14] hover:bg-emerald-900 border border-emerald-800 hover:border-emerald-600 text-sm font-medium rounded-lg transition-all text-left flex items-center gap-2";
+      });
+
+      document.querySelectorAll(".method-btn").forEach(btn => {
+        btn.className = "method-btn py-3 bg-[#081f14] border border-emerald-800 hover:border-emerald-600 rounded-xl font-bold text-sm text-center transition-all flex flex-col items-center justify-center gap-1";
+      });
+
+      document.querySelectorAll(".fan-btn").forEach(btn => {
+        btn.className = "fan-btn py-2 bg-[#081f14] hover:bg-emerald-800 border border-emerald-800 rounded-lg text-sm font-bold transition-all text-gray-200";
+      });
+
+      document.getElementById("discarder-step-container").classList.add("hidden");
+      document.getElementById("preview-box").classList.add("hidden");
+      
+      renderFanTable();
+    }
+
+    function renderHistory() {
+      const container = document.getElementById("history-list");
+      const undoBtn = document.getElementById("undo-btn");
+
+      if (history.length === 0) {
+        container.innerHTML = `<p class="text-center text-gray-500 py-6">暫無對局記錄，趕快開始第一局吧！</p>`;
+        undoBtn.disabled = true;
+        return;
+      }
+
+      undoBtn.disabled = false;
+      container.innerHTML = "";
+
+      history.forEach((h, idx) => {
+        const item = document.createElement("div");
+        item.className = "bg-[#05160e]/90 p-3 rounded-lg border border-emerald-900/60 flex flex-col gap-1.5 shadow-sm relative";
+        
+        let mainDesc = `<strong>${h.winner}</strong> ${h.method} [<strong>${h.fan} 番</strong>]`;
+        if (h.discarder) {
+          mainDesc += ` (出沖全包: ${h.discarder})`;
+        }
+
+        let tagHtml = "";
+        h.deltas.forEach((v, pIdx) => {
+          let badgeColor = "bg-gray-800 text-gray-400";
+          if (v > 0) badgeColor = "bg-emerald-950 text-emerald-400 font-bold";
+          else if (v < 0) badgeColor = "bg-red-950 text-rose-400 font-extrabold";
+          
+          tagHtml += `<span class="px-1.5 py-0.5 rounded text-[10px] ${badgeColor}">${players[pIdx].name}: ${v > 0 ? '+' : ''}${v}</span>`;
+        });
+
+        item.innerHTML = `
+          <div class="flex justify-between items-center text-xs">
+            <span class="text-amber-400/90 font-medium">${mainDesc}</span>
+            <span class="text-[10px] text-gray-500 font-mono">${h.timestamp}</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5 mt-1 border-t border-emerald-900/20 pt-1.5">
+            ${tagHtml}
+          </div>
+          ${h.rotatedDealer ? `<div class="absolute -right-1 -bottom-1 text-[8px] bg-amber-500/10 text-amber-500 px-1 py-0.5 rounded border border-amber-500/10">已轉莊</div>` : ''}
+        `;
+
+        container.appendChild(item);
+      });
+    }
+
+    function undoLastRound() {
+      if (history.length === 0) return;
+
+      const lastRound = history.shift();
+
+      players.forEach((p, idx) => {
+        p.total -= lastRound.deltas[idx];
+      });
+
+      players.forEach((p, idx) => {
+        p.isDealer = (idx === lastRound.prevDealerId);
+      });
+
+      saveState();
+      renderPlayers();
+      renderHistory();
+      updateWinInterface();
+
+      showToast("已復原上一局計分與莊家狀態！", "warning");
+    }
+
+    function toggleFanTableModal() {
+      const modal = document.getElementById("fan-table-modal");
+      modal.classList.toggle("hidden");
+    }
+
+    function toggleResetModal(show) {
+      const modal = document.getElementById("reset-modal");
+      if (show) {
+        modal.classList.remove("hidden");
+      } else {
+        modal.classList.add("hidden");
+      }
+    }
+
+    function confirmReset() {
+      toggleResetModal(true);
+    }
+
+    function resetApp() {
+      players = [
+        { id: 0, name: "玩家一", total: 0, position: "東", isDealer: true },
+        { id: 1, name: "玩家二", total: 0, position: "南", isDealer: false },
+        { id: 2, name: "玩家三", total: 0, position: "西", isDealer: false },
+        { id: 3, name: "玩家四", total: 0, position: "北", isDealer: false },
+      ];
+      history = [];
+
+      saveState();
+      resetInputs();
+      renderPlayers();
+      renderHistory();
+      toggleResetModal(false);
+      
+      showToast("系統已完全重置！開始新的一盤", "success");
+    }
+  </script>
+</body>
+</html>
+```
+eof
